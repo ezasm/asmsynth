@@ -1,0 +1,227 @@
+WPROWADZENIE
+
+
+
+Biblioteka asmsynth pozwala tworzyć 8-bitową muzykę. Symuluje pracę syntezatora i pozwala generować do 32 głosów. Można wygenerować falę kwadratową, piłokształtną czy trójkątną, najprawdopodobniej zostanie również dodana fala sinusoidalna i szum. Ta biblioteka wprowadza też dwu-programowość, potrafi wykonać asynchronicznie dwa programy jednocześnie tak, aby umożliwić otwarzanie muzyki w tle. Wprowadzona jest obsługa mostka-H, można ten układ wykorzystać jako wzmaczniacz do głośników lub można również sterować pracą silników (i zamiast piszczącego pwm będzie grać melodia :D).
+
+
+
+
+
+
+
+Konfiguracja biblioteki
+
+Biblioteka w swoim folderze posiada plik konfiguracyjny (config.h), znajdują się tam wszystkie ustawienia (używane piny, liczniki, tryby pracy biblioteki). Można ten plik edytować za pomocą notatnika. Biblioteka dedykowana dla ATmega328p i podobnych procesorach AVR. Poniżej znajduje się opis ustawień w pliku konfiguracyjnym:
+
+
+-USTAWIENIA GŁÓWNE:
+
+#define polyphony [wartość] - Ta definicja odpowiada za rezerwowanie miejsca w pamięci procesora. Maksymalna ilość odtwarzanych na raz głosów to 32, lub jeżeli zdefiniowano enable_highSamplingRate (opis poniżej) to 16.
+
+#define mode [wartość] - Warianty używanych pinów. Dostępne są 3 tryby wyjścia: Pierwszy tryb to jedno wyjście PWM. Drugi i trzeci tryb przeznaczone są do obsługi mostka-H. Drugi tryb to 1 PWM + 2 piny, trzeci: 2 PWM.
+
+#define channel [wartość] - Ilość używanych wyjść, przy wartości 2 liczba używanych pinów zostanie podwojona, przy wartości 1 zostanie bez zmian. Ustawiając wartość na 2 i włączając obsługę silników (enable_motor, opis poniżej) można sterować osobno ich mocą, bez włączonej tej funkcji piny i sygnały zostaną tylko skopiowane.
+
+
+-USTAWIENIA WEJŚCIA/WYJŚCIA:
+
+#define timerInterrupt [wartość] - Licznik z którego mają być wyzwalane przerwania. Obsługiwane są 3 liczniki: 0, 1 i 2 (ATmega328p). Wybrany licznik może nie działać (błąd kompilacji) jeśli jest wykorzystywany przez inną bibliotekę (biblioteka arduino korzysta z licznika 0).
+
+#define PWM1 [wartość]
+#define PWM2 [wartość]
+#define PWM3 [wartość]
+#define PWM4 [wartość] - Przypisuje wykorzystywane PWM. Do wyboru: 3, 5, 6, 9, 10, 11. Każdy PWM zmienia ustawienia licznika (5, 6 - licznik 0; 9, 10 - licznik 1; 3, 11 - licznik 2) i może to spowodować nieprawidłowe działanie programu jeżeli licznik jest wykorzystywany przez inną bibliotekę. Wartości PWM i pinów muszą być różne.
+
+#define pin1 [wartość]
+#define pin2 [wartość]
+#define pin3 [wartość]
+#define pin4 [wartość] - Przypisuje wykorzystywany pin. Do wyboru przedział od 2 do 13. Wartości PWM i pinów muszą być różne.
+
+
+-DODATKOWE OPCJE:
+
+#define disable_volume - Zdefiniowanie tego spowoduje wyłącznie funkcji regulacji głośności przyśpieszając pracę procesora.
+
+#define disable_secondProgram - Zdefiniowanie tego spowoduje wyłącznie dwu-programowości zwalniając miejsce z pamięci i przyśpieszając pracę procesora. Dźwięki będą dalej otwarzane w tle.
+
+#define enable_highSamplingRate - Zdefiniowanie tego spowoduje poprawę jakości audio zwiększając częstotliwość próbkowania dźwięku do 31250hz (przy taktowaniu 16Mhz). Obciążenie procesora zostanie dwukrotnie zwiększone. Włączenie tej opcji zmniejszy liczbę dostępnych głosów do 16. Przy wyłączonej tej opcji próbkowanie to: 15625hz, a maksymalna liczba głosów to 32.
+
+#define enable_motor - Zdefiniowanie tego spowoduje włączenie obsługi silników. Wyłącznie tej opcji przyśpiesza pracę procesora.
+
+#define enable_ADC - Zdefiniowanie tego spowoduje dodanie automatycznego odczytu ADC regulującego głośność. Wyłączenie tej opcji przyśpiesza pracę procesora.
+
+
+
+-TRYB RĘCZNY - ten tryb służy do kompatybilności z innymi urządzeniami opartymi na architekturze AVR. Aby zapobiec niepotrzebnemu grzebaniu i zmienianiu adresów w bibliotece zostało to wszystko uporządkowane w tym miejscu. Każdej definicji trzeba ręcznie przypisać adres odpowiadającemu danemu licznikowi czy pinowi. Wszystkie definicje odnoszące się do konkretnego pinu, PWM czy licznika powinny zostać zdefiniowane (np. aby zdefiniować PWM1 trzeba zdefiniować C_PWM1_21 i asm_PWM1_21). Nie należy definiować tej samej rzeczy w trybie ręcznym i normalnym. Piny trzeba samodzielnie ustawić na wyjście, a używane liczniki powinny zostać ręcznie ustawione na non-inverting 8-bit Fast-PWM i jeśli jest taka potrzeba powinny zostać też zsynchronizowane. Nie jest zalecane używanie tego trybu dla początkujących.
+
+
+
+
+
+
+
+OZNACZANIE DRUGIEGO PROGRAMU
+Drugi program przeznaczony jest do otwarzania muzyki dlatego wykonywanie tego programu ma wiekszy priorytet niż wykonywanie zwykłego programu. Aby oba programy działały prawidłowo obowiązkowo musi wystąpić minimum jedna komenda delay_ms() lub delay_ci() (opis poniżej) tak, aby na ten czas powrócić do wykonywania zwykłego programu. W przeciwnym razie ten program będzie odtwarzany cały czas w pętli, a zwykły program nie będzie działać. Aby oznaczyć ten program wystarczy napisać:
+
+
+
+start_secondProgram	//oznaczenie początku drugiego programu
+
+	//w tym miejscu powinien pojawić się program
+
+
+	delay_ms(1);	//powinno wystąpić minimum jedno opóźnienie w całym programie aby powrócić na ten czas do zwykłego programu
+
+end_secondProgram	//oznaczenie końca drugiego programu
+
+
+
+
+
+USTAWIANIE KSZTAŁTÓW FAL
+Kształty fal ustawiane są wewnątrz przerwania, należy napisać która fala ma być ustawiona a następnie jaki kształt ma generować ta fala. Dostępne są 3 rodzaje fal: kwadratowa (squareWave()), piłokształtna (sawWave()) i trójkątna (triangleWave()). Aby oznaczyć przerwanie i ustawić kształty fal wystarczy napisać:
+
+
+
+start_interrupt	//oznaczenie początku przerwania
+
+	//w tym miejcu definiuje się jakie fale zostaną użyte i jaki mają mieć kształt
+
+	wave01();	//fala 01 ma mieć kształt:
+	squareWave();	//kształt kwadratowy
+
+	wave02();	//fala 02 ma mieć kształt:
+	sawWave();	//kształt piłokształtny
+
+	//i tak dalej...
+
+	wave27();	//fala 27 ma mieć kształt:
+	triangleWave();	//ksztłt trójkątny
+
+end_interrupt	//oznaczenie końca przerwania
+
+
+
+
+
+STEROWANIE FALAMI
+Do sterowania fal są 3 funkcje: do zmiany częstotliwości, głośności i fazy.
+
+
+Zmiana częstotliwości
+Aby zmienić częstotliwość 1 fali należy użyć funkcji wave01_frequency(wartość). Aby zmienić częstotliwość 2 fali należy użyć funkcji wave02_frequency(wartość) i tak dalej. Dodatkowo są 3 funkcje które wpisują odpowiednią wartość dla fali:
+
+-Aby ustawić falę na odpowiednią częstotliwośc należy użyć funkcji hz(częstotliwośc) np. wave01_frequency(hz(440)) ustawi pierwszą falę na częstotliwość 440hz
+
+-Aby ustawić falę na odpowiedni dźwięk można użyć nazw dźwięku (c4, cs4, d4, ds4, e4, f4, fs4, g4, gs4, a4, as4, b4, c5, cs5, d5 i tak dalej) np. wave01_frequency(a4) ustawi pierwszą fale na częstotliwość dźwięku a4
+
+-Aby ustawić falę na odpowiedni dźwięk można użyć numeru dźwięku w funkcji keyboard(numer klawisza), dźwięk a4 ma numer 69 (tak jak w midi), np. wave01_frequency(keyboard(69)) ustawi pierwszą fale na częstotliwość dźwięku a4, wave01_frequency(keyboard(48)) ustawi pierwszą falę na dźwięk c3
+
+
+Zmiana głośności
+Aby zmienić głośnośc 1 fali należy użyć funkcji wave01_volume(wartość). Aby zmienić głośność 2 fali należy użyć funkcji wave02_volume(wartość) i tak dalej. Funkcja przyjmuje tylko wartości od 0 do 255. Suma głośności wszystkich fal nie może przekraczać 255 aby nie przesterować dźwięku. Dodatkowo głośność fali kwadratowej musi być dwukrotnie mniejsza.
+
+
+Zmiana fazy
+Aby zmienić fazę fali 1 fali należy użyć funkcji wave01_phase(wartość). Aby zmienić fazę 2 fali należy użyć funkcji wave02_phase(wartość) i tak dalej. Funkcja przyjmuje wartości int (0-65535). Funkcja jest przydatna do resetowania fal. Aby zresetować fazę trzeba ustawic ją na 0 lub jeżeli fala jest trójkątna (fala trójkątna ma przesuniętą fazę) to trzeba ustawić fazę na 16384 (25%).
+
+
+
+
+
+
+
+OPIS FUNKCJI BIBLIOTEKI
+
+
+-synthSetup() - konfiguruje mikrokontroler (ustawia piny, liczniki)
+
+-hz(częstotliwość) - przelicza częstotliwość i zwraca odpowiednią wartość dla fali
+
+-keyboard(numer klawisza)
+-keyboard(numer klawisza, +centy) - ta funkcja przelicza numer klawisza na odpowiednią wartość dla fali, numer klawisza odpowiada numerowi midi czyli dźwięk a4 ma numer 69, można dodatkowo stroić dźwięki dodając centy
+
+-delay_ms(czas w milisekundach) - opóźnienie po jakim czasie ma nastąpić powrót do programu odtwarzającego muzykę, podczas opóźnienia procesor wraca do wykonywania głównego programu, ta funkcja będzie dostępna tylko wtedy gdy nie zdefiniowano w pilku konfiguracyjnym disable_secondProgram
+
+-delay_ci(ilośc przerwań) - tak samo jak delay_ms z tą różnicą że wpisuje się ilość przerwań licznika (1 przerwanie to 16us przy taktowaniu 16Mhz), podczas opóźnienia procesor wraca do wykonywania głównego programu, ta funkcja będzie dostępna tylko wtedy gdy nie zdefiniowano w pilku konfiguracyjnym disable_secondProgram
+
+-get_ms() - zwraca ilość czasu w ms
+
+-get_ci() - zwraca ilość przerwań licznika (1 przerwanie to 16us przy taktowaniu 16Mhz)
+
+-pause() - zatrzymuje odtwarzanie muzyki (licznik przerwań również zostaje zatrzymany)
+
+-play() - ponowne włączenie odtwarzanie muzyki
+
+-reset() - resetuje odtwarzanie muzyki (licznik przerwań również zostaje zresetowany)
+
+-stop() - resetuje i zatrzymuje odtwarzanie muzyki (licznik przerwań zostanie zresetowany i zatrzymany)
+
+-volume(głośność) - ustawia głośność z jaką ma być odtwarzana muzyka, przyjmuje wartości od 0 do 255, ta funkcja będzie dostępna tylko wtedy gdy nie zdefiniowano w pilku konfiguracyjnym disable_volume
+
+-ADCchannel(numer pinu ADC) - ustawia numer używanego pinu ADC, ta funkcja będzie dostępna tylko wtedy gdy zdefiniowano w pilku konfiguracyjnym enable_ADC
+
+-motorA(moc silnika A) - ustawia moc z jaką ma pracować pierwszy silnik, przyjmuje wartości od -127 do 127, ta funkcja będzie dostępna tylko wtedy gdy zdefiniowano w pilku konfiguracyjnym enable_motor
+
+-motorB(moc silnika B) - ustawia moc z jaką ma pracować drugi silnik, przyjmuje wartości od -127 do 127, ta funkcja będzie dostępna tylko wtedy gdy zdefiniowano w pilku konfiguracyjnym enable_motor i channel 2
+
+
+
+
+
+Przykładowy program z użyciem biblioteki:
+
+
+#include <asmsynth.h>
+
+void setup()
+{
+	synthSetup();	//konfigurowanie mikrokontrolera
+	volume(255);	//ustawienie głównej głośności na maksymalną wartość
+
+	//poziom głośności wszystkich fal nie może przekraczać 255
+	wave01_volume(64);	//głośność fali kwadratowej liczona jest podwójnie
+	wave02_volume(127);
+
+	//i tak dalej
+
+	pinMode(13, OUTPUT);
+}
+
+void loop()
+{
+	//jakiś program
+	digitalWrite(13, HIGH);
+	delay(1000);
+	digitalWrite(13, LOW);
+	delay(1000);
+}
+
+start_interrupt	//oznaczenie początku przerwania
+	//określanie użytych fal i ich kształtu
+	wave01();
+	squareWave();
+	wave02();
+	triangleWave();
+	//i tak dalej...
+end_interrupt	//oznaczenie końca przerwania
+
+start_secondProgram	//oznaczenie początku drugiego programu
+	//jakiś program
+	wave01_frequency(keyboard(random(45, 93)));
+	wave02_frequency(keyboard(random(33, 81)));
+	delay_ms(300);	//przerwanie tego programu na 300ms i powrót na ten czas do wykonywania zwykłego programu
+	//po skończeniu wszystkich zadań nastąpi powrót do początku tego programu
+end_secondProgram	//oznaczenie końca drugiego programu
+
+
+
+
+
+
+
+Jest to pierwsza wersja biblioteki którą należy przetestować, mogą pojawić się błędy (drugi program nie posiada osobnego stosu i rejestry nie są zapisywane, ale za to biblioteka działa szybciej i jest mniejsze użycie pamięci) chodź dla przeciętnego użytkowania to raczej mało prawdopodobne. Zaletą tej biblioteki jest szybkość pracy i wykonywanie asynchronicznie dwóch programów na raz. Wady które można by było zmienić to plik konfiguracyjny czy definiowanie kształtów fal i inne. Można spróbować rozbudować syntezator dodając modulacje fal (tworząc nowe brzmienia), pogłos, echo, filtry ale na pierszą wersję biblioteki to raczej narazie wystarczy.
+
+GitHub: https://github.com/ezasm/asmsynth
+YouTube: https://www.youtube.com/channel/UCGBqKmF_BD880ZERvZW-lAg

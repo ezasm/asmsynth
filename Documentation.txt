@@ -1,0 +1,229 @@
+This documentation is translated and may contain possible translation errors, originally written in Polish.
+
+INTRODUCTION
+
+
+
+The asmsynth library allows you to create 8-bit music. It simulates the work of a synthesizer and allows you to generate up to 32 voices. Square, sawtooth or triangular wave can be generated, most likely sine wave and noise will also be added. This library also introduces two-programmability, it can execute two programs asynchronously at the same time to allow background music to be played. H-bridge support is introduced, it can be used as an amplifier for loudspeakers or you can also control the operation of the motors (and instead of a squeaking PWM melody will play: D).
+
+
+
+
+
+
+
+Library configuration
+
+The library in its folder has a configuration file (config.h), there are all settings (used pins, counters, library work modes). You can edit this file with notepad. Library dedicated to ATmega328p and similar AVR processors. Below is a description of the settings in the configuration file:
+
+
+-Main settings:
+
+#define polyphony [value] - This definition is responsible for allocating space in the processor's memory. The maximum number of voices played at once is 32, or if enable_highSamplingRate is defined (see below), it is 16.
+
+#define mode [value] - Variants of used pins. There are 3 output modes: The first mode is one PWM output. The second and third modes are for H-bridge. The second mode is 1 PWM + 2 pins, the third: 2 PWM.
+
+#define channel [value] - Number of used outputs, with a value of 2 the number of used pins will be doubled, with a value of 1 will remain unchanged. By setting the value to 2 and enabling motor support (enable_motor, description below), you can control their power separately, without this function enabled, the pins and signals will only be copied.
+
+
+-INPUT / OUTPUT SETTINGS:
+
+#define timerInterrupt [value] - Counter from which interrupts are to be triggered. 3 counters are supported: 0, 1 and 2 (ATmega328p). The selected counter may not work (compile error) if it is used by another library (arduino library uses 0 counter).
+
+#define PWM1 [value]
+#define PWM2 [value]
+#define PWM3 [value]
+#define PWM4 [value] - Assigns the used PWM. Options: 3, 5, 6, 9, 10, 11. Each PWM changes the settings of the counter (5, 6 - counter 0; 9, 10 - counter 1; 3, 11 - counter 2) and this may cause the program to malfunction if counter is used by another library. PWM and pin values ​​must be different.
+
+#define pin1 [value]
+#define pin2 [value]
+#define pin3 [value]
+#define pin4 [value] - Assigns the pin used. The range is from 2 to 13. The PWM and pin values ​​must be different.
+
+
+-ADDITIONAL OPTIONS:
+
+#define disable_volume - Defining this will only cause the volume control to speed up the processor.
+
+#define disable_secondProgram - Defining this will only double-program, freeing up memory space and speeding up the CPU. The sounds will continue to play in the background.
+
+#define enable_highSamplingRate - Defining this will improve the audio quality by increasing the audio sampling rate to 31250hz (at 16Mhz clock speed). The CPU load will be doubled. Enabling this option will reduce the number of voices available to 16. When disabled, the sampling rate is: 15625hz and the maximum number of voices is 32.
+
+#define enable_motor - Defining this will enable engine support. Excluding this option speeds up the processor.
+
+#define enable_ADC - Defining this will add an automatic ADC reading to adjust the volume. Disabling this option speeds up the processor.
+
+
+
+-MANUAL MODE - this mode is for compatibility with other devices based on AVR architecture. To prevent unnecessary rummaging around and changing addresses in the library, it has all been organized here. Each definition must be manually assigned an address corresponding to a given counter or pin. All definitions relating to a specific pin, PWM or counter should be defined (e.g. to define PWM1 one must define C_PWM1_21 and asm_PWM1_21). Don't define the same thing in manual and normal mode. The pins must be set to the output by yourself, and the counters used should be manually set to non-inverting 8-bit Fast-PWM and, if necessary, they should also be synchronized. It is not recommended to use this mode for beginners.
+
+
+
+
+
+
+
+MARKING A SECOND PROGRAM
+The second program is designed to play music, therefore executing this program has a higher priority than executing a normal program. For both programs to work properly, there must be at least one delay_ms() or delay_ci() command (see below), so that you can return to normal program execution for that time. Otherwise, this program will loop continuously and the normal program will not run. To label this program just write:
+
+
+
+start_secondProgram	//mark the start of the second program
+
+	//this is where the program should appear
+
+
+	delay_ms (1);	// there should be a minimum of one delay in the entire program to return to the normal program during that time
+
+end_secondProgram	//mark the end of the second program
+
+
+
+
+
+ADJUSTING THE WAVE SHAPES
+The waveforms are set inside the interrupt, write which wave is to be set and then what shape the wave should generate. There are 3 types of waves: square (squareWave()), sawtooth (sawWave()) and triangle (triangleWave()). To mark a break and set the waveforms, just type:
+
+
+
+start_interrupt	//mark start of interrupt
+
+	//here you define what waves will be used and what shape they should have
+
+	wave01();	//wave 01 should have the shape:
+	squarewave();	//square shape
+
+	wave02();	//wave 02 should have the shape:
+	sawWave();	//sawtooth shape
+
+	//and so on...
+
+	wave27();	//wave 27 should have the shape:
+	triangleWave();	//triangular shape
+
+end_interrupt	//mark end of interrupt
+
+
+
+
+
+WAVE CONTROL
+There are 3 functions to control the waves: to change frequency, volume and phase.
+
+
+Change of frequency
+To change the frequency of 1 wave, use the wave01_frequency(value) function. To change the frequency of the 2nd wave, use the wave02_frequency(value) function and so on. Additionally, there are 3 functions that enter the appropriate value for the wave:
+
+-To set the wave to the right frequency use the hz (frequency) function, e.g. wave01_frequency(hz(440)) will set the first wave to 440hz
+
+-To set the wave to the appropriate sound, you can use the sound names (c4, cs4, d4, ds4, e4, f4, fs4, g4, gs4, a4, as4, b4, c5, cs5, d5 and so on) e.g. wave01_frequency(a4) will set the first wave to the sound frequency a4
+
+-To set the wave to the appropriate sound, you can use the sound number in the keyboard function (key number), the a4 sound has the number 69 (as in midi), e.g. wave01_frequency(keyboard(69)) will set the first wave to the a4 sound frequency, wave01_frequency(keyboard(48)) will set the first wave to sound c3
+
+
+Change the volume
+To change the volume of 1 wave, use the wave01_volume(value) function. To change the volume of the 2nd wave, use the wave02_volume(value) function and so on. The function only takes values ​​from 0 to 255. The sum of the loudness of all waves must not exceed 255 in order not to distort the sound. Additionally, the loudness of the square wave must be twice as low.
+
+
+Phase change
+To change the phase of wave 1 of wave, use the wave01_phase(value) function. To change the phase of the 2nd wave, use the wave02_phase(value) function and so on. The function takes the values ​​of int (0-65535). This function is useful for resetting waves. To reset the phase it must be set to 0 or if the wave is triangular (the triangular wave is out of phase) it must be set to 16384 (25%).
+
+
+
+
+
+
+
+DESCRIPTION OF THE LIBRARY FUNCTIONS
+
+
+-synthSetup() - configures the microcontroller (sets the pins, counters)
+
+-hz(frequency) - Converts the frequency and returns the appropriate value for the wave
+
+-keyboard(key number)
+-keyboard(key number, +cents) - this function converts the key number to the appropriate value for the wave, the key number corresponds to the midi number, i.e. the a4 sound has the number 69, you can additionally tune the sounds by adding cents
+
+-delay_ms(time in milliseconds) - delay after which the return to the music player program is to take place, during the delay the processor returns to the main program execution, this function will be available only if disable_secondProgram is not defined in the configuration file
+
+-delay_ci(number of interrupts) - the same as delay_ms with the difference that the number of counter interrupts is entered (1 interrupt is 16us at 16Mhz clock speed), during the delay the processor returns to the main program, this function will be available only if not defined in the file configuration configuration disable_secondProgram
+
+-get_ms() - returns the amount of time in ms
+
+-get_ci() - returns the number of interrupts of the counter (1 interrupt is 16us at 16Mhz clock speed)
+
+-pause() - stops playing music (interrupt timer also stops)
+
+-play() - restart playing music
+
+-reset() - resets music playback (interrupt timer is also reset)
+
+-stop() - resets and stops playing music (interrupt timer will be reset and stopped)
+
+-volume(volume) - sets the volume with which the music is to be played, takes values ​​from 0 to 255, this function will be available only when disable_volume is not defined in the configuration file
+
+-ADCchannel(ADC pin number) - sets the number of the ADC pin used, this function will be available only when defined in the configuration file enable_ADC
+
+-motorA(motor A power) - sets the power with which the first motor is to work, takes values ​​from -127 to 127, this function will be available only when defined in the configuration file enable_motor
+
+-motorB(motor B power) - sets the power with which the second motor is to work, takes values ​​from -127 to 127, this function will be available only when defined in the configuration file enable_motor and channel 2
+
+
+
+
+
+Sample program using the library:
+
+
+#include <asmsynth.h>
+
+void setup()
+{
+	synthSetup();	//configure the microcontroller
+	volume(255);	//set the master volume to maximum value
+
+	//the volume of all waves must not exceed 255
+	wave01_volume(64);	//the volume of a square wave is counted twice
+	wave02_volume(127);
+
+	//and so on
+
+	pinMode (13, OUTPUT);
+}
+
+void loop ()
+{
+	//some program
+	digitalWrite (13, HIGH);
+	delay (1000);
+	digitalWrite (13, LOW);
+	delay (1000);
+}
+
+start_interrupt	//mark start of interrupt
+	//define the waves used and their shape
+	wave01();
+	squarewave();
+	wave02();
+	triangleWave();
+	//and so on...
+end_interrupt	//mark end of interrupt
+
+start_secondProgram	//mark the start of the second program
+	//some program
+	wave01_frequency(keyboard (random (45, 93)));
+	wave02_frequency(keyboard (random (33, 81)));
+	delay_ms(300);	//interrupt this program for 300ms and return to normal program execution during this time
+	//after completing all tasks, it will return to the beginning of this program
+end_secondProgram	//mark the end of the second program
+
+
+
+
+
+
+
+This is the first version of the library that should be tested, errors may occur (the second program does not have a separate stack and registers are not saved, but the library works faster and there is less memory consumption) but for average use it is rather unlikely. The advantage of this library is speed of work and execution of two programs asynchronously. Disadvantages that could be changed are the configuration file, defining waveforms and others. You can try to expand the synthesizer by adding wave modulations (creating new sounds), reverb, echo, filters but for the first version of the library it is rather enough for now.
+
+GitHub: https://github.com/ezasm/asmsynth
+YouTube: https://www.youtube.com/channel/UCGBqKmF_BD880ZERvZW-lAg
